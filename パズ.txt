@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>パズドラ練習（サイズ可変）</title>
+<style>
+  body {
+    background: #222;
+    color: #fff;
+    font-family: sans-serif;
+    text-align: center;
+  }
+  #ui {
+    margin: 10px;
+  }
+  button {
+    margin: 4px;
+    padding: 8px 12px;
+  }
+  #board {
+    margin: 20px auto;
+    display: grid;
+    gap: 4px;
+    touch-action: none;
+  }
+  .orb {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background-size: cover;
+    background-position: center;
+  }
+</style>
+</head>
+<body>
+
+<h2>パズドラ練習（盤面サイズ対応）</h2>
+
+<div id="ui">
+  <!-- 盤面サイズ選択 -->
+  <select id="sizeSelect" onchange="changeBoard()">
+    <option value="6x5">6×5（通常）</option>
+    <option value="7x6">7×6（広い）</option>
+    <option value="custom">カスタム</option>
+  </select>
+  <br>
+  <div id="customSize" style="display:none;">
+    行（縦）: <input id="rowsInput" type="number" value="6" min="3" max="10">
+    列（横）: <input id="colsInput" type="number" value="5" min="3" max="10">
+    <button onclick="applyCustomSize()">適用</button>
+  </div>
+
+  <br>
+
+  <button onclick="startTimer()">スタート</button>
+  <button onclick="stopTimer()">停止</button>
+  <span id="timer">0.00</span> 秒
+
+  <br>
+
+  <button onclick="toggleOchi()">落ちコン：<span id="ochiText">ON</span></button>
+  <button onclick="saveBoard()">記憶</button>
+  <button onclick="loadBoard()">復元</button>
+  <button onclick="randomBoard()">再生成</button>
+</div>
+
+<div id="board"></div>
+
+<script>
+/* -----------------------------
+   盤面サイズ設定（デフォ 6×5）
+------------------------------*/
+let rows = 5;
+let cols = 6;
+
+function changeBoard() {
+  const v = document.getElementById("sizeSelect").value;
+
+  if (v === "6x5") {
+    rows = 5;
+    cols = 6;
+    document.getElementById("customSize").style.display = "none";
+    randomBoard();
+  } else if (v === "7x6") {
+    rows = 6;
+    cols = 7;
+    document.getElementById("customSize").style.display = "none";
+    randomBoard();
+  } else {
+    document.getElementById("customSize").style.display = "block";
+  }
+}
+
+function applyCustomSize() {
+  rows = Number(document.getElementById("rowsInput").value);
+  cols = Number(document.getElementById("colsInput").value);
+  randomBoard();
+}
+
+/* -----------------------------
+   基本データ
+------------------------------*/
+const board = document.getElementById("board");
+const colors = ["red", "blue", "green", "yellow", "purple", "heart"];
+const colorURL = {
+  red:    "https://via.placeholder.com/50/ff4444/ffffff?text=R",
+  blue:   "https://via.placeholder.com/50/448aff/ffffff?text=B",
+  green:  "https://via.placeholder.com/50/4caf50/ffffff?text=G",
+  yellow: "https://via.placeholder.com/50/ffeb3b/000000?text=Y",
+  purple: "https://via.placeholder.com/50/9c27b0/ffffff?text=P",
+  heart:  "https://via.placeholder.com/50/ff80ab/ffffff?text=H"
+};
+
+let grid = [];
+let savedGrid = [];
+let dragging = false;
+let currentOrb = null;
+let ochiOn = true;
+
+/* -----------------------------
+   タイマー
+------------------------------*/
+let timer = 0;
+let timerID = null;
+
+function startTimer() {
+  if (timerID) return;
+  timerID = setInterval(() => {
+    timer += 0.01;
+    document.getElementById("timer").textContent = timer.toFixed(2);
+  }, 10);
+}
+function stopTimer() {
+  clearInterval(timerID);
+  timerID = null;
+}
+
+/* -----------------------------
+   落ちコン ON/OFF
+------------------------------*/
+function toggleOchi() {
+  ochiOn = !ochiOn;
+  document.getElementById("ochiText").textContent = ochiOn ? "ON" : "OFF";
+}
+
+/* -----------------------------
+   盤面生成
+------------------------------*/
+function randomBoard() {
+  grid = [];
+  for (let r = 0; r < rows; r++) {
+    const row = [];
+    for (let c = 0; c < cols; c++) {
+      row.push(colors[Math.floor(Math.random() * colors.length)]);
+    }
+    grid.push(row);
+  }
+  render();
+}
+
+/* -----------------------------
+   描画
+------------------------------*/
+function render() {
+  board.style.gridTemplateColumns = `repeat(${cols}, 50px)`;
+  board.style.gridTemplateRows = `repeat(${rows}, 50px)`;
+
+  board.innerHTML = "";
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const orb = document.createElement("div");
+      orb.className = "orb";
+      orb.dataset.r = r;
+      orb.dataset.c = c;
+      orb.dataset.color = grid[r][c];
+      orb.style.backgroundImage = `url(${colorURL[grid[r][c]]})`;
+      board.appendChild(orb);
+    }
+  }
+}
+
+/* -----------------------------
+   盤面記憶
+------------------------------*/
+function saveBoard() {
+  savedGrid = JSON.parse(JSON.stringify(grid));
+  alert("盤面を記憶しました");
+}
+function loadBoard() {
+  if (!savedGrid.length) return;
+  grid = JSON.parse(JSON.stringify(savedGrid));
+  render();
+}
+
+/* -----------------------------
+   指／マウス位置
+------------------------------*/
+function getOrbFromEvent(e) {
+  const t = e.touches ? e.touches[0] : e;
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  return (el && el.classList.contains("orb")) ? el : null;
+}
+
+/* -----------------------------
+   ドラッグ開始
+------------------------------*/
+board.addEventListener("mousedown", startDrag);
+board.addEventListener("touchstart", startDrag, {passive:false});
+
+function startDrag(e) {
+  e.preventDefault();
+  const orb = getOrbFromEvent(e);
+  if (!orb) return;
+  dragging = true;
+  currentOrb = orb;
+}
+
+/* -----------------------------
+   ドラッグ中
+------------------------------*/
+document.addEventListener("mousemove", moveDrag);
+document.addEventListener("touchmove", moveDrag, {passive:false});
+
+function moveDrag(e) {
+  if (!dragging) return;
+  const target = getOrbFromEvent(e);
+  if (!target || target === currentOrb) return;
+
+  // 入れ替え
+  const r1 = +currentOrb.dataset.r;
+  const c1 = +currentOrb.dataset.c;
+  const r2 = +target.dataset.r;
+  const c2 = +target.dataset.c;
+
+  const tmp = grid[r1][c1];
+  grid[r1][c1] = grid[r2][c2];
+  grid[r2][c2] = tmp;
+
+  render();
+  currentOrb = target;
+}
+
+/* -----------------------------
+   ドラッグ終了 → コンボ処理
+------------------------------*/
+document.addEventListener("mouseup", endDrag);
+document.addEventListener("touchend", endDrag);
+
+function endDrag() {
+  if (!dragging) return;
+  dragging = false;
+  processCombos();
+}
+
+/* -----------------------------
+   コンボ判定 & 消去
+------------------------------*/
+function processCombos() {
+  let removed = markAndRemove();
+  if (removed > 0) {
+    fall();
+    if (ochiOn) {
+      setTimeout(processCombos, 150);
+    }
+  }
+}
+
+function markAndRemove() {
+  let remove = [...Array(rows)].map(()=>Array(cols).fill(false));
+  let count = 0;
+
+  // 横
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols - 2; c++) {
+      const col = grid[r][c];
+      if (col && col === grid[r][c+1] && col === grid[r][c+2]) {
+        remove[r][c] = remove[r][c+1] = remove[r][c+2] = true;
+      }
+    }
+  }
+  // 縦
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows - 2; r++) {
+      const col = grid[r][c];
+      if (col && col === grid[r+1][c] && col === grid[r+2][c]) {
+        remove[r][c] = remove[r+1][c] = remove[r+2][c] = true;
+      }
+    }
+  }
+
+  // 消去
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (remove[r][c]) {
+        grid[r][c] = null;
+        count++;
+      }
+    }
+  }
+
+  render();
+  return count;
+}
+
+/* -----------------------------
+   落下
+------------------------------*/
+function fall() {
+  for (let c = 0; c < cols; c++) {
+    let stack = [];
+    for (let r = rows - 1; r >= 0; r--) {
+      if (grid[r][c]) stack.push(grid[r][c]);
+    }
+    for (let r = rows - 1; r >= 0; r--) {
+      grid[r][c] = stack.length ? stack.shift() :
+        (ochiOn ? colors[Math.floor(Math.random()*colors.length)] : null);
+    }
+  }
+  render();
+}
+
+/* -----------------------------
+   初期起動（6×5）
+------------------------------*/
+randomBoard();
+</script>
+
+</body>
+</html>
